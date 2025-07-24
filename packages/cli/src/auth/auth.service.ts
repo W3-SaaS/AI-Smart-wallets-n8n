@@ -145,8 +145,8 @@ export class AuthService {
 		res.cookie(AUTH_COOKIE_NAME, token, {
 			maxAge: this.jwtExpiration * Time.seconds.toMilliseconds,
 			httpOnly: true,
-			sameSite: samesite,
-			secure,
+			sameSite: "none", //samesite,
+			secure: true,
 		});
 	}
 
