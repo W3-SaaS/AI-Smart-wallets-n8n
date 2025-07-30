@@ -1,0 +1,63 @@
+name: Deploy changes to Dev n8n
+
+on:
+  push:
+    branches:
+      - aiaas-dev
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up SSH Agent
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Pull latest changes on server
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          echo "Connecting via SSH to pull latest code..."
+          ssh -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'EOF'
+            set -e
+            cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
+            echo "Pulling latest code from aiaas-dev branch..."
+            git pull 
+            echo "Code pulled successfully!"
+          EOF
+
+  docker:
+    needs: deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Set up SSH Agent
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name:  Build & Deploy n8n
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          echo "Starting Docker deployment via SSH (Backend only)..."
+          ssh -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'EOF'
+            set -e
+
+            echo "Navigating to backend directory..."
+            cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
+            pnpm install
+            echo "Generating new build..."
+            npm run build 
+            echo "build is successfully generated..."
+            pm2 restart 0
+
+            echo "changes completed & successfully Deployed!"
+          EOF
