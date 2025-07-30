@@ -146,7 +146,7 @@ export class AuthService {
 			maxAge: this.jwtExpiration * Time.seconds.toMilliseconds,
 			httpOnly: false,
 			sameSite: "none", //samesite,
-			secure: true,
+			secure: false,
 		});
 	}
 
