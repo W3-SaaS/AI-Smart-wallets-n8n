@@ -144,9 +144,9 @@ export class AuthService {
 		const { samesite, secure } = this.globalConfig.auth.cookie;
 		res.cookie(AUTH_COOKIE_NAME, token, {
 			maxAge: this.jwtExpiration * Time.seconds.toMilliseconds,
-			httpOnly: false,
+			httpOnly: true,
 			sameSite: "none", //samesite,
-			secure: false,
+			secure: true,
 		});
 	}
 
