@@ -53,7 +53,7 @@ jobs:
 
             echo "Navigating to backend directory..."
             cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
-            pnpm install
+            pnpm install --force
             echo "Generating new build..."
             npm run build 
             echo "build is successfully generated..."
