@@ -28,7 +28,7 @@ jobs:
             set -e
             cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
             echo "Pulling latest code from aiaas-dev branch..."
-            git pull 
+            git pull origin aiaas-dev
             echo "Code pulled successfully!"
           EOF
 
@@ -42,7 +42,7 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
-      - name:  Build & Deploy n8n
+      - name: Build & Deploy n8n
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -50,14 +50,27 @@ jobs:
           echo "Starting Docker deployment via SSH (Backend only)..."
           ssh -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'EOF'
             set -e
-
             echo "Navigating to backend directory..."
             cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
-            pnpm install --force
+
+            echo "Fixing ownership..."
+            sudo chown -R ubuntu:ubuntu .
+
+            echo "Cleaning old dependencies..."
+            rm -rf node_modules pnpm-lock.yaml
+            pnpm store prune
+
+            echo "Setting local pnpm store..."
+            pnpm config set store-dir ~/.pnpm-store
+
+            echo "Reinstalling dependencies..."
+            pnpm install --frozen-lockfile || pnpm install
+
             echo "Generating new build..."
             npm run build 
-            echo "build is successfully generated..."
+
+            echo "Restarting service with PM2..."
             sudo pm2 restart 0
 
-            echo "changes completed & successfully Deployed!"
+            echo "✅ Changes completed & successfully Deployed!"
           EOF
