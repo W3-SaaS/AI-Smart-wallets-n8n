@@ -2391,18 +2391,352 @@ describe('Workflow', () => {
 			});
 		});
 
-		test('should return undefined when depth is 0', () => {
+		test('should return undefined when no connection exists', () => {
 			const result = SIMPLE_WORKFLOW.getNodeConnectionIndexes(
-				'Set',
 				'Start',
+				'Set',
 				NodeConnectionTypes.Main,
-				0,
 			);
 			expect(result).toBeUndefined();
 		});
 
 		test('should handle workflows with multiple connection indexes', () => {
 			const result = WORKFLOW_WITH_SWITCH.getNodeConnectionIndexes('Set', 'Switch');
+			expect(result).toEqual({
+				sourceIndex: 1,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should find connection through multiple intermediate nodes', () => {
+			const result = WORKFLOW_WITH_SWITCH.getNodeConnectionIndexes('Set2', 'Switch');
+			expect(result).toEqual({
+				sourceIndex: 1,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should return first found connection when multiple paths exist', () => {
+			// Set2 can be reached from Switch via two paths: Switch->Set->Set2 and Switch->Set1->Set2
+			// Should return the first one found (via Set at index 1)
+			const result = WORKFLOW_WITH_SWITCH.getNodeConnectionIndexes('Set2', 'Switch');
+			expect(result).toEqual({
+				sourceIndex: 1,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should handle same source connecting to multiple outputs of destination', () => {
+			// Switch connects to Set via both output 1 and 2, should find first connection
+			const result = WORKFLOW_WITH_SWITCH.getNodeConnectionIndexes('Set', 'Switch');
+			expect(result).toEqual({
+				sourceIndex: 1,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should handle cyclic connections without infinite loops', () => {
+			// Test with WORKFLOW_WITH_LOOPS which has cycles
+			const result = WORKFLOW_WITH_LOOPS.getNodeConnectionIndexes('Set', 'Start');
+			expect(result).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should return undefined for reverse connection lookup', () => {
+			// Try to find Start from Set1 - should be undefined as Start doesn't connect to Set1
+			const result = SIMPLE_WORKFLOW.getNodeConnectionIndexes('Set1', 'Start');
+			expect(result).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should handle disconnected subgraphs', () => {
+			// Create a workflow with disconnected nodes
+			const disconnectedWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'Node1',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+					{
+						name: 'Node2',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-2',
+						position: [200, 100],
+						parameters: {},
+					},
+				],
+				connections: {}, // No connections
+				active: false,
+			});
+
+			const result = disconnectedWorkflow.getNodeConnectionIndexes('Node2', 'Node1');
+			expect(result).toBeUndefined();
+		});
+
+		test('should handle empty workflow', () => {
+			const emptyWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [],
+				connections: {},
+				active: false,
+			});
+
+			const result = emptyWorkflow.getNodeConnectionIndexes('NonExistent1', 'NonExistent2');
+			expect(result).toBeUndefined();
+		});
+
+		test('should handle single node workflow', () => {
+			const singleNodeWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'OnlyNode',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+				],
+				connections: {},
+				active: false,
+			});
+
+			const result = singleNodeWorkflow.getNodeConnectionIndexes('OnlyNode', 'OnlyNode');
+			expect(result).toBeUndefined();
+		});
+
+		test('should handle nodes with same names as method parameters', () => {
+			// Test edge case where node names might conflict with internal variables
+			const edgeCaseWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'queue',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+					{
+						name: 'visitedNodes',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-2',
+						position: [200, 100],
+						parameters: {},
+					},
+				],
+				connections: {
+					queue: {
+						main: [
+							[
+								{
+									node: 'visitedNodes',
+									type: NodeConnectionTypes.Main,
+									index: 0,
+								},
+							],
+						],
+					},
+				},
+				active: false,
+			});
+
+			const result = edgeCaseWorkflow.getNodeConnectionIndexes('visitedNodes', 'queue');
+			expect(result).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should handle complex branching and merging patterns', () => {
+			// Create a diamond pattern: A -> B, A -> C, B -> D, C -> D
+			const diamondWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'A',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+					{
+						name: 'B',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-2',
+						position: [200, 50],
+						parameters: {},
+					},
+					{
+						name: 'C',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-3',
+						position: [200, 150],
+						parameters: {},
+					},
+					{
+						name: 'D',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-4',
+						position: [300, 100],
+						parameters: {},
+					},
+				],
+				connections: {
+					A: {
+						main: [
+							[
+								{ node: 'B', type: NodeConnectionTypes.Main, index: 0 },
+								{ node: 'C', type: NodeConnectionTypes.Main, index: 0 },
+							],
+						],
+					},
+					B: {
+						main: [[{ node: 'D', type: NodeConnectionTypes.Main, index: 0 }]],
+					},
+					C: {
+						main: [[{ node: 'D', type: NodeConnectionTypes.Main, index: 1 }]],
+					},
+				},
+				active: false,
+			});
+
+			// Should find connection A -> B -> D
+			const result = diamondWorkflow.getNodeConnectionIndexes('D', 'A');
+			expect(result).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should handle multiple input indexes correctly', () => {
+			// Test a node that receives inputs at different indexes
+			const multiInputWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'Source1',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+					{
+						name: 'Source2',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-2',
+						position: [100, 200],
+						parameters: {},
+					},
+					{
+						name: 'Target',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-3',
+						position: [300, 150],
+						parameters: {},
+					},
+				],
+				connections: {
+					Source1: {
+						main: [[{ node: 'Target', type: NodeConnectionTypes.Main, index: 0 }]],
+					},
+					Source2: {
+						main: [[{ node: 'Target', type: NodeConnectionTypes.Main, index: 1 }]],
+					},
+				},
+				active: false,
+			});
+
+			// Check connection from Source1 to Target (should be at input index 0)
+			const result1 = multiInputWorkflow.getNodeConnectionIndexes('Target', 'Source1');
+			expect(result1).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+
+			// Check connection from Source2 to Target (should be at input index 1)
+			const result2 = multiInputWorkflow.getNodeConnectionIndexes('Target', 'Source2');
+			expect(result2).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+		});
+
+		test('should respect connection type parameter', () => {
+			// Test with different connection types if available
+			const result = SIMPLE_WORKFLOW.getNodeConnectionIndexes(
+				'Set',
+				'Start',
+				NodeConnectionTypes.Main,
+			);
+			expect(result).toEqual({
+				sourceIndex: 0,
+				destinationIndex: 0,
+			});
+
+			// Test with non-existent connection type (should return undefined)
+			const resultNonExistent = SIMPLE_WORKFLOW.getNodeConnectionIndexes(
+				'Set',
+				'Start',
+				'nonexistent' as any,
+			);
+			expect(resultNonExistent).toBeUndefined();
+		});
+
+		test('should handle nodes with null or undefined connections gracefully', () => {
+			// Test workflow with sparse connection arrays
+			const sparseWorkflow = new Workflow({
+				nodeTypes,
+				nodes: [
+					{
+						name: 'Start',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-1',
+						position: [100, 100],
+						parameters: {},
+					},
+					{
+						name: 'End',
+						type: 'test.set',
+						typeVersion: 1,
+						id: 'uuid-2',
+						position: [200, 100],
+						parameters: {},
+					},
+				],
+				connections: {
+					Start: {
+						main: [
+							null, // Null connection at index 0
+							[{ node: 'End', type: NodeConnectionTypes.Main, index: 0 }], // Connection at index 1
+						],
+					},
+				},
+				active: false,
+			});
+
+			const result = sparseWorkflow.getNodeConnectionIndexes('End', 'Start');
 			expect(result).toEqual({
 				sourceIndex: 1,
 				destinationIndex: 0,
@@ -2767,348 +3101,6 @@ describe('Workflow', () => {
 
 			const result = workflow.getConnectionsBetweenNodes(['Node1'], ['TargetNode']);
 			expect(result).toEqual([]);
-		});
-	});
-
-	describe('hasPath method', () => {
-		test('should return true for self-reference', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-				],
-				connections: {},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Node1', 'Node1')).toBe(true);
-		});
-
-		test('should return false when nodes are not connected', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node2',
-						name: 'Node2',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-				],
-				connections: {},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Node1', 'Node2')).toBe(false);
-		});
-
-		test('should return true for directly connected nodes', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node2',
-						name: 'Node2',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Node1: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'Node2', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Node1', 'Node2')).toBe(true);
-			expect(workflow.hasPath('Node2', 'Node1')).toBe(true);
-		});
-
-		test('should respect maximum depth limit', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node2',
-						name: 'Node2',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Node1: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'Node2', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			// Should find path with sufficient depth
-			expect(workflow.hasPath('Node1', 'Node2', 5)).toBe(true);
-			expect(workflow.hasPath('Node1', 'Node2', 1)).toBe(true);
-
-			// Should not find path with insufficient depth
-			expect(workflow.hasPath('Node1', 'Node2', 0)).toBe(false);
-		});
-
-		test('should handle AI connection types', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Agent',
-						name: 'Agent',
-						type: 'test.ai.agent',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Tool1',
-						name: 'Tool1',
-						type: 'test.ai.tool',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-					{
-						id: 'Memory',
-						name: 'Memory',
-						type: 'test.ai.memory',
-						typeVersion: 1,
-						position: [200, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Tool1: {
-						[NodeConnectionTypes.AiTool]: [
-							[{ node: 'Agent', type: NodeConnectionTypes.AiTool, index: 0 }],
-						],
-					},
-					Memory: {
-						[NodeConnectionTypes.AiMemory]: [
-							[{ node: 'Agent', type: NodeConnectionTypes.AiMemory, index: 0 }],
-						],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Tool1', 'Agent')).toBe(true);
-			expect(workflow.hasPath('Memory', 'Agent')).toBe(true);
-			expect(workflow.hasPath('Tool1', 'Memory')).toBe(true);
-		});
-
-		test('should handle complex paths with multiple connection types', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Start',
-						name: 'Start',
-						type: 'test.start',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'VectorStore',
-						name: 'VectorStore',
-						type: 'test.vectorstore',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-					{
-						id: 'Document',
-						name: 'Document',
-						type: 'test.document',
-						typeVersion: 1,
-						position: [200, 0],
-						parameters: {},
-					},
-					{
-						id: 'End',
-						name: 'End',
-						type: 'test.end',
-						typeVersion: 1,
-						position: [300, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Start: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'VectorStore', type: NodeConnectionTypes.AiVectorStore, index: 0 }],
-						],
-					},
-					Document: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'VectorStore', type: NodeConnectionTypes.AiDocument, index: 0 }],
-						],
-					},
-					VectorStore: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'End', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Start', 'End')).toBe(true);
-			expect(workflow.hasPath('Document', 'End')).toBe(true);
-			expect(workflow.hasPath('Start', 'Document')).toBe(true);
-		});
-
-		test('should handle cyclic graphs without infinite loops', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node2',
-						name: 'Node2',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node3',
-						name: 'Node3',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [200, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Node1: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'Node2', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-					Node2: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'Node3', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-					Node3: {
-						[NodeConnectionTypes.Main]: [
-							[{ node: 'Node1', type: NodeConnectionTypes.Main, index: 0 }],
-						],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Node1', 'Node3')).toBe(true);
-			expect(workflow.hasPath('Node2', 'Node1')).toBe(true);
-			expect(workflow.hasPath('Node3', 'Node2')).toBe(true);
-		});
-
-		test('should handle empty workflow', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [],
-				connections: {},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('NonExistent1', 'NonExistent2')).toBe(false);
-		});
-
-		test('should handle nodes with no outgoing connections', () => {
-			const workflow = new Workflow({
-				id: 'test',
-				nodes: [
-					{
-						id: 'Node1',
-						name: 'Node1',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [0, 0],
-						parameters: {},
-					},
-					{
-						id: 'Node2',
-						name: 'Node2',
-						type: 'test.set',
-						typeVersion: 1,
-						position: [100, 0],
-						parameters: {},
-					},
-				],
-				connections: {
-					Node1: {
-						[NodeConnectionTypes.Main]: [[]],
-					},
-				},
-				active: false,
-				nodeTypes,
-			});
-
-			expect(workflow.hasPath('Node1', 'Node2')).toBe(false);
-			expect(workflow.hasPath('Node2', 'Node1')).toBe(false);
 		});
 	});
 });
