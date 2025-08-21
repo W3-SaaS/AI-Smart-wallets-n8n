@@ -50,27 +50,12 @@ jobs:
           echo "Starting Docker deployment via SSH (Backend only)..."
           ssh -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" << 'EOF'
             set -e
-            echo "Navigating to backend directory..."
-            cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n
-
-            echo "Fixing ownership..."
-            sudo chown -R ubuntu:ubuntu .
-
-            echo "Cleaning old dependencies..."
-            rm -rf node_modules pnpm-lock.yaml
-            pnpm store prune
-
-            echo "Setting local pnpm store..."
-            pnpm config set store-dir ~/.pnpm-store
-
-            echo "Reinstalling dependencies..."
-            pnpm install --frozen-lockfile || pnpm install
-
-            echo "Generating new build..."
+            cd /home/ubuntu/n8n-dev/AI-Smart-wallets-n8n 
+            pnpm install --force 
+            echo "Generating new build..." 
             npm run build 
-
-            echo "Restarting service with PM2..."
-            sudo pm2 restart 0
-
+            echo "build is successfully generated..." 
+            sudo pm2 restart 0 
+            echo "changes completed & successfully Deployed!"
             echo "✅ Changes completed & successfully Deployed!"
           EOF
